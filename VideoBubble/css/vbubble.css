@@ -1,0 +1,286 @@
+.vb-wrapper {
+	--vb-accent: #7432ff;
+	--vb-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+	position: fixed;
+	bottom: 30px;
+	right: 30px;
+	width: 170px;
+	height: 170px;
+	z-index: 999999;
+	cursor: pointer;
+	transform-origin: bottom right;
+	transition: transform .3s, opacity .3s;
+	font-family: var(--vb-font-family);
+	box-sizing: border-box;
+	background: none !important;
+	border: none !important;
+	box-shadow: none !important;
+	margin: 0 !important;
+	padding: 0 !important;
+}
+.vb-wrapper * { box-sizing: border-box; }
+
+/* Isolate every button/link inside the widget from the page theme's global
+   button/link styling (resets, frameworks, etc). :where() keeps this at ZERO
+   specificity so every other rule below naturally overrides it as written -
+   no !important tug-of-war needed for things like position/align-items. */
+:where(.vb-wrapper button) {
+	all: unset;
+	box-sizing: border-box;
+	cursor: pointer;
+	font-family: var(--vb-font-family);
+}
+:where(.vb-wrapper a) {
+	all: unset;
+	box-sizing: border-box;
+	cursor: pointer;
+	font-family: var(--vb-font-family);
+}
+
+.vb-wrapper.vb-position-left {
+	right: auto;
+	left: 30px;
+	transform-origin: bottom left;
+}
+
+/* Hidden until show-delay elapses / before JS decides whether to show at all */
+.vb-wrapper[hidden] { display: none; }
+.vb-wrapper.vb-pending { opacity: 0; pointer-events: none; }
+
+.vb-wrapper.vb-scrolled:not(.vb-full) { transform: scale(.67); }
+.vb-wrapper.vb-scrolled:not(.vb-full):hover,
+.vb-wrapper.vb-scrolled:not(.vb-full):focus-within { transform: scale(1); }
+
+/* ── Media (video / youtube container) ─────────────────────────────────── */
+.vb-media {
+	width: 100%;
+	height: 100%;
+	border-radius: 100%;
+	border: 3px solid var(--vb-accent);
+	overflow: hidden;
+	position: relative;
+	background: #000;
+	box-shadow: 0 4px 14px rgba(0,0,0,.65);
+}
+.vb-wrapper.vb-full .vb-media {
+	border-radius: 10px;
+	border: none;
+}
+.vb-media video {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	border: none;
+	display: block;
+	position: absolute;
+	top: 0;
+	left: 0;
+	pointer-events: none; /* clicks handled by the wrapper, not the raw element */
+}
+/* YouTube iframes don't reliably support object-fit cross-browser, so width/height
+   are computed and set at runtime (JS) using the same math as background-size:cover,
+   recalculated via ResizeObserver whenever the container size changes. */
+.vb-media iframe {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	border: none;
+	display: block;
+	pointer-events: none;
+}
+
+/* ── Greet text (bubble state only) ─────────────────────────────────────── */
+.vb-text {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	z-index: 5;
+	margin: 0;
+	width: 100%;
+	text-align: center;
+	color: #fff;
+	font-size: 25px;
+	text-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+	pointer-events: none;
+}
+.vb-wrapper.vb-full .vb-text { display: none; }
+
+/* ── Dismiss (bubble state, hover-revealed) ─────────────────────────────── */
+.vb-dismiss {
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	position: absolute !important;
+	top: -6px !important;
+	right: 15px !important;
+	z-index: 10;
+	width: 26px !important;
+	height: 26px !important;
+	border-radius: 50% !important;
+	background: #fff !important;
+	color: #333;
+	border: 1px solid rgba(0, 0, 0, .15) !important;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, .2) !important;
+	opacity: 0;
+	transition: opacity .2s;
+}
+.vb-wrapper:hover .vb-dismiss,
+.vb-dismiss:focus-visible { opacity: 1; }
+.vb-wrapper.vb-full .vb-dismiss { display: none !important; }
+.vb-dismiss svg {
+	width: 14px !important;
+	height: 14px !important;
+	max-width: none !important;
+	max-height: none !important;
+	flex-shrink: 0;
+	color: #333;
+}
+
+/* ── Full-mode icon buttons ──────────────────────────────────────────────── */
+.vb-icon-btn {
+	display: none !important;
+	align-items: center !important;
+	justify-content: center !important;
+	position: absolute !important;
+	width: 44px !important;
+	height: 44px !important;
+	border-radius: 50% !important;
+	background: rgba(22, 30, 46, .6) !important;
+	color: #fff;
+	border: 1px solid rgba(255, 255, 255, .35) !important;
+	transition: background .2s, transform .15s;
+	z-index: 10;
+	flex-shrink: 0;
+}
+.vb-wrapper.vb-full .vb-icon-btn { display: flex !important; }
+.vb-wrapper.vb-full .vb-icon-btn[hidden] { display: none !important; }
+.vb-icon-btn:hover { background: rgba(22, 30, 46, .8) !important; }
+.vb-icon-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.vb-icon-btn svg {
+	width: 22px !important;
+	height: 22px !important;
+	max-width: none !important;
+	max-height: none !important;
+	flex-shrink: 0;
+	color: #fff;
+}
+
+.vb-btn-collapse { top: 5px !important; right: 5px !important; }
+.vb-btn-play {
+	width: 62px !important;
+	height: 62px !important;
+	top: 50% !important;
+	left: 50% !important;
+	transform: translate(-50%, -50%);
+}
+.vb-btn-play svg { width: 28px !important; height: 28px !important; }
+.vb-wrapper.vb-playing .vb-btn-play { display: none !important; }
+
+.vb-media-actions {
+	display: none;
+	flex-direction: column;
+	gap: 6px;
+	position: absolute;
+	top: 5px;
+	left: 5px;
+	z-index: 10;
+}
+.vb-wrapper.vb-full .vb-media-actions { display: flex; }
+.vb-media-actions .vb-icon-btn { position: static !important; }
+
+/* ── Bottom action row: More-info CTA + next-video control, side by side ─── */
+.vb-bottom-actions {
+	display: none;
+	position: absolute;
+	bottom: 20px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 100%;
+	z-index: 10;
+	padding: 0 12px;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+}
+.vb-wrapper.vb-full .vb-bottom-actions { display: flex; }
+
+.vb-next-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	justify-content: center;
+	max-width: 100%;
+}
+
+.vb-cta a,
+.vb-next-list button,
+.vb-next-single {
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	gap: 6px;
+	width: auto !important;
+	max-width: 100%;
+	background: var(--vb-accent) !important;
+	color: #fff !important;
+	border: none !important;
+	padding: 10px 16px !important;
+	border-radius: 8px !important;
+	font-size: 14px;
+	text-decoration: none !important;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	transition: background .2s;
+}
+.vb-cta a:hover, .vb-cta a:focus-visible,
+.vb-next-list button:hover, .vb-next-list button:focus-visible,
+.vb-next-single:hover, .vb-next-single:focus-visible { background: #161e2e !important; }
+.vb-next-list button[aria-current="true"] { outline: 2px solid #fff; outline-offset: -4px; }
+.vb-next-single svg {
+	width: 14px !important;
+	height: 14px !important;
+	max-width: none !important;
+	max-height: none !important;
+	flex-shrink: 0;
+	color: #fff;
+}
+.vb-next-single span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: #fff;
+}
+
+/* ── Expanded (full) state sizing ────────────────────────────────────────── */
+.vb-wrapper.vb-full {
+	width: 300px;
+	height: 500px;
+	cursor: default;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media only screen and (max-width: 575px) {
+	.vb-wrapper { width: 150px; height: 150px; }
+	.vb-wrapper.vb-full { width: 250px; height: 400px; }
+	.vb-icon-btn { width: 34px !important; height: 34px !important; }
+	.vb-icon-btn svg { width: 18px !important; height: 18px !important; }
+	.vb-btn-play { width: 44px !important; height: 44px !important; }
+	.vb-btn-play svg { width: 22px !important; height: 22px !important; }
+}
+@media only screen and (max-width: 450px) {
+	.vb-wrapper { width: 135px; height: 135px; }
+	.vb-wrapper.vb-full { width: 200px; height: 350px; }
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+	.vb-wrapper, .vb-icon-btn, .vb-cta a, .vb-next-list button, .vb-dismiss {
+		transition: none !important;
+	}
+	.vb-wrapper.vb-scrolled:not(.vb-full) { transform: none; }
+}
