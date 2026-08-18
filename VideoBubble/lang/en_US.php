@@ -54,6 +54,7 @@ $i18n = [
 	'lang_Switcher_All'          => 'Show every video as its own button',
 	'lang_Switcher_Hint'         => 'Only matters when you have more than one video.',
 	'lang_Next_Video'            => 'Next',
+	'lang_Reopen_Link'           => 'Show video again',
 
 	'lang_Invalid_Nonce'         => 'Security check failed. Please reload the page and try again.',
 	'lang_Invalid_YouTube_URL'   => 'Could not find a valid YouTube video ID in that URL.',

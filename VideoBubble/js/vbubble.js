@@ -17,8 +17,9 @@
 
 	// ── Respect a prior dismissal ─────────────────────────────────────────
 	var storageKey = 'vb_dismissed';
-	if (settings.remember_closed === 'session' && sessionStorage.getItem(storageKey)) return;
-	if (settings.remember_closed === 'local' && localStorage.getItem(storageKey)) return;
+	var wasDismissed =
+		(settings.remember_closed === 'session' && !!sessionStorage.getItem(storageKey)) ||
+		(settings.remember_closed === 'local' && !!localStorage.getItem(storageKey));
 
 	// ── DOM refs ───────────────────────────────────────────────────────────
 	var mediaEl      = document.getElementById('vb-media');
@@ -350,12 +351,40 @@
 		loadVideo(0, { unmute: false });
 	}
 
-	var delay = Math.max(0, parseInt(settings.show_delay_seconds, 10) || 0);
-	if (delay > 0) {
-		wrapper.classList.add('vb-pending');
+	// Clears any remembered dismissal and brings the widget back (bubble state,
+	// muted preview) - exposed so a link/button elsewhere on the page can call it.
+	function reopen() {
+		sessionStorage.removeItem(storageKey);
+		localStorage.removeItem(storageKey);
+		wrapper.classList.remove('vb-full');
+		isFull = false;
 		wrapper.hidden = false;
-		setTimeout(boot, delay * 1000);
-	} else {
-		boot();
+		wrapper.classList.remove('vb-pending');
+		loadVideo(currentIndex, { unmute: false });
 	}
+
+	window.VideoBubble = window.VideoBubble || {};
+	window.VideoBubble.reopen = reopen;
+
+	// Auto-wire any element the theme marks up with data-vb-reopen (e.g. a
+	// footer link) - see also the get_vbubble_reopen_link() template tag.
+	document.querySelectorAll('[data-vb-reopen]').forEach(function (el) {
+		el.addEventListener('click', function (e) {
+			e.preventDefault();
+			reopen();
+		});
+	});
+
+	if (!wasDismissed) {
+		var delay = Math.max(0, parseInt(settings.show_delay_seconds, 10) || 0);
+		if (delay > 0) {
+			wrapper.classList.add('vb-pending');
+			wrapper.hidden = false;
+			setTimeout(boot, delay * 1000);
+		} else {
+			boot();
+		}
+	}
+	// If wasDismissed, the wrapper stays hidden (as server-rendered) until
+	// reopen() is called - we don't autoplay/load a video until then.
 })();

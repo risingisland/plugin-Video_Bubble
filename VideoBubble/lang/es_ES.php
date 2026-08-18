@@ -54,6 +54,7 @@ $i18n = [
 	'lang_Switcher_All'          => 'Mostrar cada vídeo como su propio botón',
 	'lang_Switcher_Hint'         => 'Solo importa cuando tienes más de un vídeo.',
 	'lang_Next_Video'            => 'Siguiente',
+	'lang_Reopen_Link'           => 'Mostrar el vídeo de nuevo',
 
 	'lang_Invalid_Nonce'         => 'La comprobación de seguridad falló. Recarga la página e inténtalo de nuevo.',
 	'lang_Invalid_YouTube_URL'   => 'No se encontró un ID de vídeo de YouTube válido en esa URL.',
