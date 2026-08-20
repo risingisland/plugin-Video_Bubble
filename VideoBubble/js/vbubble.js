@@ -57,10 +57,7 @@
 		return ytApiPromise;
 	}
 
-	// Sizes a 16:9 iframe to fully COVER its container (no letterboxing), the same
-	// way object-fit:cover would for a <video> - needed because iframes don't
-	// reliably support object-fit across browsers. Called on load and whenever
-	// the container is resized (bubble <-> expanded, breakpoint changes, etc).
+	// Sizes a 16:9 iframe to fully COVER its container (no letterboxing).
 	function coverFitIframe(iframe, container) {
 		if (!iframe || !container) return;
 		var cw = container.clientWidth;

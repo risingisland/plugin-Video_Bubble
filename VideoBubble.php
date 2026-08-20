@@ -97,19 +97,19 @@ function VideoBubble_db() {
 function VideoBubble_default_settings() {
 	return [
 		'greet_text'          => 'Hey 👋',
-		'position'             => 'right',        // 'right' | 'left'
+		'position'             => 'right',		// 'right' | 'left'
 		'accent_color'         => '#7432ff',
 		'more_info_label'      => '',
 		'more_info_url'        => '',
-		'more_info_target'     => '_blank', // '_blank' | '_self'
+		'more_info_target'     => '_blank',		// '_blank' | '_self'
 		'autoplay_muted'       => true,
 		'loop_bubble'          => true,
 		'pause_on_tab_switch'  => true,
 		'show_close_button'    => true,
-		'remember_closed'      => 'off',           // 'off' | 'session' | 'local'
+		'remember_closed'      => 'off',		// 'off' | 'session' | 'local'
 		'show_delay_seconds'   => 0,
 		'use_nocookie_youtube' => true,
-		'video_switcher_style' => 'next',           // 'all' | 'next'
+		'video_switcher_style' => 'next',		// 'all' | 'next'
 		'custom_css'           => '',
 	];
 }
@@ -158,22 +158,22 @@ function VideoBubble_save_settings($incoming) {
 	$defaults = VideoBubble_default_settings();
 	$clean    = [];
 
-	$clean['greet_text']         = trim(strip_tags((string)($incoming['greet_text'] ?? $defaults['greet_text'])));
-	$clean['position']           = in_array($incoming['position'] ?? '', ['left', 'right'], true) ? $incoming['position'] : $defaults['position'];
-	$clean['accent_color']       = preg_match('/^#[0-9a-fA-F]{3,8}$/', (string)($incoming['accent_color'] ?? '')) ? $incoming['accent_color'] : $defaults['accent_color'];
-	$clean['more_info_label']    = trim(strip_tags((string)($incoming['more_info_label'] ?? '')));
-	$clean['more_info_url']      = trim((string)($incoming['more_info_url'] ?? ''));
-	$clean['more_info_target']   = in_array($incoming['more_info_target'] ?? '', ['_blank', '_self'], true) ? $incoming['more_info_target'] : $defaults['more_info_target'];
-	$clean['autoplay_muted']     = !empty($incoming['autoplay_muted']);
-	$clean['loop_bubble']        = !empty($incoming['loop_bubble']);
-	$clean['pause_on_tab_switch']= !empty($incoming['pause_on_tab_switch']);
-	$clean['show_close_button']  = !empty($incoming['show_close_button']);
-	$clean['remember_closed']    = in_array($incoming['remember_closed'] ?? '', ['off', 'session', 'local'], true) ? $incoming['remember_closed'] : $defaults['remember_closed'];
+	$clean['greet_text']		= trim(strip_tags((string)($incoming['greet_text'] ?? $defaults['greet_text'])));
+	$clean['position']			= in_array($incoming['position'] ?? '', ['left', 'right'], true) ? $incoming['position'] : $defaults['position'];
+	$clean['accent_color']		= preg_match('/^#[0-9a-fA-F]{3,8}$/', (string)($incoming['accent_color'] ?? '')) ? $incoming['accent_color'] : $defaults['accent_color'];
+	$clean['more_info_label']	= trim(strip_tags((string)($incoming['more_info_label'] ?? '')));
+	$clean['more_info_url']		= trim((string)($incoming['more_info_url'] ?? ''));
+	$clean['more_info_target']	= in_array($incoming['more_info_target'] ?? '', ['_blank', '_self'], true) ? $incoming['more_info_target'] : $defaults['more_info_target'];
+	$clean['autoplay_muted']	= !empty($incoming['autoplay_muted']);
+	$clean['loop_bubble']	= !empty($incoming['loop_bubble']);
+	$clean['pause_on_tab_switch'] = !empty($incoming['pause_on_tab_switch']);
+	$clean['show_close_button']	= !empty($incoming['show_close_button']);
+	$clean['remember_closed']	= in_array($incoming['remember_closed'] ?? '', ['off', 'session', 'local'], true) ? $incoming['remember_closed'] : $defaults['remember_closed'];
 	$clean['show_delay_seconds'] = max(0, (int)($incoming['show_delay_seconds'] ?? 0));
 	$clean['use_nocookie_youtube'] = !empty($incoming['use_nocookie_youtube']);
 	$clean['video_switcher_style'] = in_array($incoming['video_switcher_style'] ?? '', ['all', 'next'], true) ? $incoming['video_switcher_style'] : $defaults['video_switcher_style'];
 	// custom_css is intentionally NOT strip_tags'd (it's CSS), but strip any accidental </style> break-out
-	$clean['custom_css']         = str_ireplace('</style', '', (string)($incoming['custom_css'] ?? ''));
+	$clean['custom_css']		= str_ireplace('</style', '', (string)($incoming['custom_css'] ?? ''));
 
 	$db   = VideoBubble_db();
 	$stmt = $db->prepare("UPDATE vb_settings SET settings = :s WHERE id = 1");
@@ -236,30 +236,18 @@ function VideoBubble_sanitize_relpath($path) {
 }
 
 // Resolve a video row's stored 'source' value to an absolute filesystem path.
-//
-// A bare filename with no folder is ambiguous on its own: rows saved before this
-// feature store a bare filename that always lived in /vbubble/, but a bare filename
-// can now also mean a file freshly uploaded/selected directly at the uploads root
-// (blank folder = uploads root, same convention as Items Manager). Rather than
-// guess from string shape, prefer the literal uploads-root location and only fall
-// back to the legacy /vbubble/ location if that's where the file actually is.
 function VideoBubble_resolve_source_path($source) {
 	$source = (string)$source;
 	if ($source === '') return '';
 
 	$root_path = VideoBubble_UPLOAD_ROOT . VideoBubble_sanitize_relpath($source);
 	if (strpos($source, '/') === false && !file_exists($root_path)) {
-		// Bare filename not sitting at the uploads root - either a legacy row (always
-		// lived in /vbubble/) or the file's simply gone. Either way, /vbubble/ is the
-		// more useful path to hand back (matches this plugin's pre-existing assumption).
 		return VideoBubble_UPLOAD_DIR . $source;
 	}
 	return $root_path;
 }
 
-// Same idea as VideoBubble_resolve_source_path(), but returns the public URL,
-// with each path segment percent-encoded individually (rawurlencode() alone
-// would also encode the '/' separators).
+// Returns the public URL
 function VideoBubble_resolve_source_url($source) {
 	$source = (string)$source;
 	if ($source === '') return '';
@@ -273,8 +261,6 @@ function VideoBubble_resolve_source_url($source) {
 }
 
 // Sanitize an uploaded filename while KEEPING the original name where possible.
-// Only appends a numeric suffix if a file with that exact name already exists
-// in the target directory.
 function VideoBubble_safe_upload_filename($original, $dir) {
 	$original = basename($original);
 	$ext  = strtolower(pathinfo($original, PATHINFO_EXTENSION));
@@ -294,7 +280,6 @@ function VideoBubble_safe_upload_filename($original, $dir) {
 }
 
 // True if any OTHER video row (besides $exclude_id) still references this source path.
-// Needed because the file browser lets multiple video entries share one physical file.
 function VideoBubble_file_in_use($source, $exclude_id = 0) {
 	$db   = VideoBubble_db();
 	$stmt = $db->prepare("SELECT id FROM vb_videos WHERE type='mp4' AND source = :s AND id != :ex LIMIT 1");
@@ -304,9 +289,7 @@ function VideoBubble_file_in_use($source, $exclude_id = 0) {
 	return (bool)($res ? $res->fetchArray() : false);
 }
 
-// Recursively list every mp4/webm/ogg file anywhere under data/uploads/, for the
-// "Browse Uploads" tab of the file picker. Paths are returned relative to the
-// uploads root (e.g. "vbubble/demo.mp4", "products/promo.mp4").
+// Recursively list every mp4/webm/ogg file anywhere under data/uploads/
 function VideoBubble_list_uploaded_files() {
 	$files   = [];
 	$allowed = ['mp4', 'webm', 'ogg'];
@@ -513,8 +496,7 @@ function VideoBubble_handle_ajax($action) {
 				exit;
 			}
 
-			// Folder is optional (blank = uploads root) and may not exist yet - it's
-			// created on the fly, same as typing a new folder in a desktop file dialog.
+			// Folder is optional (blank = uploads root) and may not exist yet.
 			$folder     = VideoBubble_sanitize_relpath($_POST['folder'] ?? '');
 			$target_dir = VideoBubble_UPLOAD_ROOT . ($folder !== '' ? $folder . '/' : '');
 
@@ -523,8 +505,7 @@ function VideoBubble_handle_ajax($action) {
 				exit;
 			}
 
-			// Confirm the resolved directory actually stays inside the uploads root
-			// (defence in depth - VideoBubble_sanitize_relpath() already strips '..').
+			// Confirm the resolved directory actually stays inside the uploads root.
 			$root_real = realpath(VideoBubble_UPLOAD_ROOT);
 			$dir_real  = realpath($target_dir);
 			if (!$root_real || !$dir_real || strpos($dir_real, $root_real) !== 0) {
@@ -573,9 +554,7 @@ function VideoBubble_handle_ajax($action) {
 				}
 				$source = $vid_id;
 			} else {
-				// 'video_source' is a path relative to data/uploads/, set by the file
-				// browser modal (either an existing file the user picked, or one they
-				// just uploaded through it).
+				// 'video_source' is a path relative to data/uploads/.
 				$rel = trim(str_replace('\\', '/', $_POST['video_source'] ?? ''), '/');
 				$rel = $rel !== '' ? VideoBubble_sanitize_relpath($rel) : '';
 
@@ -591,8 +570,7 @@ function VideoBubble_handle_ajax($action) {
 				}
 				$source = $rel;
 
-				// If editing and the file changed, clean up the OLD file - but only if no
-				// other video row still references it (files can now be shared/reused).
+				// If editing and the file changed, clean up the OLD file.
 				if ($id) {
 					$existing_row = VideoBubble_get_video($id);
 					if ($existing_row && $existing_row['type'] === 'mp4' && $existing_row['source'] && $existing_row['source'] !== $source) {

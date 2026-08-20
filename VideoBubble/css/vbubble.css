@@ -21,10 +21,6 @@
 }
 .vb-wrapper * { box-sizing: border-box; }
 
-/* Isolate every button/link inside the widget from the page theme's global
-   button/link styling (resets, frameworks, etc). :where() keeps this at ZERO
-   specificity so every other rule below naturally overrides it as written -
-   no !important tug-of-war needed for things like position/align-items. */
 :where(.vb-wrapper button) {
 	all: unset;
 	box-sizing: border-box;
@@ -44,7 +40,6 @@
 	transform-origin: bottom left;
 }
 
-/* Hidden until show-delay elapses / before JS decides whether to show at all */
 .vb-wrapper[hidden] { display: none; }
 .vb-wrapper.vb-pending { opacity: 0; pointer-events: none; }
 
@@ -78,9 +73,6 @@
 	left: 0;
 	pointer-events: none; /* clicks handled by the wrapper, not the raw element */
 }
-/* YouTube iframes don't reliably support object-fit cross-browser, so width/height
-   are computed and set at runtime (JS) using the same math as background-size:cover,
-   recalculated via ResizeObserver whenever the container size changes. */
 .vb-media iframe {
 	position: absolute;
 	top: 50%;

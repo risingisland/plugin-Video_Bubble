@@ -23,8 +23,6 @@
 		videos = JSON.parse(document.getElementById('vb-initial-videos').textContent || '[]');
 	} catch (e) { videos = []; }
 
-	// Explicit source of truth for "are we editing, and what id" - NOT the hidden
-	// DOM field, which can be stale after form.reset()/browser autofill/async re-render.
 	var currentEditId = null; // null = adding a new video
 	var fbFiles = null;  // lazy-loaded, recursive list of every video file under data/uploads/
 	var fbFolder = '';   // folder currently open in the Browse tab (relative to data/uploads/)
