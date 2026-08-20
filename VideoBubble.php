@@ -14,7 +14,8 @@ i18n_merge('VideoBubble') || i18n_merge('VideoBubble', 'en_US');
 define('VideoBubble_DB_PATH',    GSDATAOTHERPATH . 'VideoBubble.db');
 define('VideoBubble_SLUG',       basename(__FILE__, '.php'));
 define('VideoBubble_PLUGIN_DIR', GSPLUGINPATH . VideoBubble_SLUG . '/');
-define('VideoBubble_UPLOAD_DIR', GSDATAUPLOADPATH . 'vbubble/'); // public - served directly by <video>
+define('VideoBubble_UPLOAD_DIR', GSDATAUPLOADPATH . 'vbubble/'); // legacy default - public, served directly by <video>
+define('VideoBubble_UPLOAD_ROOT', GSDATAUPLOADPATH); // browsable root for the file picker - all of data/uploads/
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -25,11 +26,11 @@ register_plugin(
 	'risingisland',
 	'https://ko-fi.com/ericmontgomery',
 	'Floating video greeting bubble (mp4 + YouTube), vanilla JS front-end.',
-	'theme',
+	'pages',
 	'VideoBubble_admin_page'
 );
 
-add_action('theme-sidebar', 'createSideMenu', array(
+add_action('pages-sidebar', 'createSideMenu', array(
 	VideoBubble_SLUG,
 	i18n_r('VideoBubble/lang_Menu_Title') . ' <svg xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;" width="22" height="22" viewBox="0 0 20 20"><path d="M0 0h20v20H0z" fill="none"/><path fill="#416cc9" d="M6 8a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm6 1l1.146-1.146a.5.5 0 0 1 .854.353v3.586a.5.5 0 0 1-.854.353L12 11zm-2-7a8 8 0 1 1-3.613 15.14l-.121-.065l-3.645.91a.5.5 0 0 1-.62-.441v-.082l.014-.083l.91-3.644l-.063-.12a8 8 0 0 1-.83-2.887l-.025-.382L2 10a8 8 0 0 1 8-8m0 1a7 7 0 0 0-6.106 10.425a.5.5 0 0 1 .063.272l-.014.094l-.756 3.021l3.024-.754a.5.5 0 0 1 .188-.01l.091.021l.087.039A7 7 0 1 0 10 3"/></svg>',
 	'?id=' . VideoBubble_SLUG
@@ -76,7 +77,7 @@ function VideoBubble_plugin_url() {
 }
 
 function VideoBubble_upload_url() {
-	return VideoBubble_site_url() . 'data/uploads/vbubble/';
+	return VideoBubble_site_url() . 'data/uploads/';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -218,9 +219,63 @@ function VideoBubble_parse_youtube_id($input) {
 	return '';
 }
 
+// Clean up a user-supplied relative folder/file path: normalise slashes, drop any
+// '..' or empty segments (rather than erroring out), and strip characters that
+// aren't safe in a folder/file name. Used any time a path comes from $_POST/$_GET.
+function VideoBubble_sanitize_relpath($path) {
+	$path = str_replace('\\', '/', (string)$path);
+	$parts = explode('/', $path);
+	$clean = [];
+	foreach ($parts as $p) {
+		$p = trim($p);
+		if ($p === '' || $p === '.' || $p === '..') continue;
+		$p = preg_replace('/[^A-Za-z0-9 _\-\.]/', '-', $p);
+		$clean[] = $p;
+	}
+	return implode('/', $clean);
+}
+
+// Resolve a video row's stored 'source' value to an absolute filesystem path.
+//
+// A bare filename with no folder is ambiguous on its own: rows saved before this
+// feature store a bare filename that always lived in /vbubble/, but a bare filename
+// can now also mean a file freshly uploaded/selected directly at the uploads root
+// (blank folder = uploads root, same convention as Items Manager). Rather than
+// guess from string shape, prefer the literal uploads-root location and only fall
+// back to the legacy /vbubble/ location if that's where the file actually is.
+function VideoBubble_resolve_source_path($source) {
+	$source = (string)$source;
+	if ($source === '') return '';
+
+	$root_path = VideoBubble_UPLOAD_ROOT . VideoBubble_sanitize_relpath($source);
+	if (strpos($source, '/') === false && !file_exists($root_path)) {
+		// Bare filename not sitting at the uploads root - either a legacy row (always
+		// lived in /vbubble/) or the file's simply gone. Either way, /vbubble/ is the
+		// more useful path to hand back (matches this plugin's pre-existing assumption).
+		return VideoBubble_UPLOAD_DIR . $source;
+	}
+	return $root_path;
+}
+
+// Same idea as VideoBubble_resolve_source_path(), but returns the public URL,
+// with each path segment percent-encoded individually (rawurlencode() alone
+// would also encode the '/' separators).
+function VideoBubble_resolve_source_url($source) {
+	$source = (string)$source;
+	if ($source === '') return '';
+
+	$rel = VideoBubble_sanitize_relpath($source);
+	if (strpos($source, '/') === false && !file_exists(VideoBubble_UPLOAD_ROOT . $rel)) {
+		$rel = 'vbubble/' . $rel; // legacy bare filename - resolve against its old home
+	}
+	$parts = array_map('rawurlencode', explode('/', $rel));
+	return VideoBubble_upload_url() . implode('/', $parts);
+}
+
 // Sanitize an uploaded filename while KEEPING the original name where possible.
-// Only appends a numeric suffix if a file with that exact name already exists.
-function VideoBubble_safe_upload_filename($original) {
+// Only appends a numeric suffix if a file with that exact name already exists
+// in the target directory.
+function VideoBubble_safe_upload_filename($original, $dir) {
 	$original = basename($original);
 	$ext  = strtolower(pathinfo($original, PATHINFO_EXTENSION));
 	$base = pathinfo($original, PATHINFO_FILENAME);
@@ -231,37 +286,55 @@ function VideoBubble_safe_upload_filename($original) {
 
 	$candidate = $base . '.' . $ext;
 	$i = 1;
-	while (file_exists(VideoBubble_UPLOAD_DIR . $candidate)) {
+	while (file_exists($dir . $candidate)) {
 		$candidate = $base . '-' . $i . '.' . $ext;
 		$i++;
 	}
 	return $candidate;
 }
 
-// True if any OTHER video row (besides $exclude_id) still references this mp4 filename.
-// Needed because "choose existing file" lets multiple video entries share one physical file.
-function VideoBubble_file_in_use($filename, $exclude_id = 0) {
+// True if any OTHER video row (besides $exclude_id) still references this source path.
+// Needed because the file browser lets multiple video entries share one physical file.
+function VideoBubble_file_in_use($source, $exclude_id = 0) {
 	$db   = VideoBubble_db();
 	$stmt = $db->prepare("SELECT id FROM vb_videos WHERE type='mp4' AND source = :s AND id != :ex LIMIT 1");
-	$stmt->bindValue(':s',  $filename, SQLITE3_TEXT);
+	$stmt->bindValue(':s',  $source, SQLITE3_TEXT);
 	$stmt->bindValue(':ex', (int)$exclude_id, SQLITE3_INTEGER);
 	$res = $stmt->execute();
 	return (bool)($res ? $res->fetchArray() : false);
 }
 
-// List existing uploaded mp4/webm/ogg files available for reuse in the file browser
+// Recursively list every mp4/webm/ogg file anywhere under data/uploads/, for the
+// "Browse Uploads" tab of the file picker. Paths are returned relative to the
+// uploads root (e.g. "vbubble/demo.mp4", "products/promo.mp4").
 function VideoBubble_list_uploaded_files() {
-	$files = [];
-	foreach (glob(VideoBubble_UPLOAD_DIR . '*') as $path) {
-		if (!is_file($path)) continue;
-		$ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-		if (!in_array($ext, ['mp4', 'webm', 'ogg'], true)) continue;
-		$files[] = [
-			'filename' => basename($path),
-			'size'     => filesize($path),
-			'url'      => VideoBubble_upload_url() . rawurlencode(basename($path)),
-		];
-	}
+	$files   = [];
+	$allowed = ['mp4', 'webm', 'ogg'];
+	$root    = VideoBubble_UPLOAD_ROOT;
+
+	$scan = function ($dir, $rel) use (&$scan, &$files, $allowed) {
+		$items = @scandir($dir);
+		if ($items === false) return;
+		foreach ($items as $item) {
+			if ($item === '' || $item[0] === '.') continue; // skip dotfiles/.htaccess/hidden
+			$full = $dir . $item;
+			$relPath = $rel !== '' ? $rel . '/' . $item : $item;
+			if (is_dir($full)) {
+				$scan($full . '/', $relPath);
+			} else {
+				$ext = strtolower(pathinfo($item, PATHINFO_EXTENSION));
+				if (!in_array($ext, $allowed, true)) continue;
+				$files[] = [
+					'filename' => $relPath,
+					'basename' => $item,
+					'size'     => filesize($full),
+					'url'      => VideoBubble_resolve_source_url($relPath),
+				];
+			}
+		}
+	};
+	$scan($root, '');
+
 	usort($files, function ($a, $b) { return strcasecmp($a['filename'], $b['filename']); });
 	return $files;
 }
@@ -295,7 +368,6 @@ function get_vbubble() {
 	if (empty($videos)) return; // nothing configured yet - render nothing
 
 	$plugin_url = VideoBubble_plugin_url();
-	$upload_url = VideoBubble_upload_url();
 
 	// Build the front-end payload: only what JS needs, with resolved public URLs
 	$payload_videos = [];
@@ -304,7 +376,7 @@ function get_vbubble() {
 			'type'   => $v['type'],
 			'source' => $v['source'],
 			'label'  => $v['label'],
-			'url'    => $v['type'] === 'mp4' ? $upload_url . rawurlencode($v['source']) : null,
+			'url'    => $v['type'] === 'mp4' ? VideoBubble_resolve_source_url($v['source']) : null,
 		];
 	}
 
@@ -419,6 +491,58 @@ function VideoBubble_handle_ajax($action) {
 			exit;
 		}
 
+		case 'upload_file': {
+			VideoBubble_check_nonce_or_die();
+
+			if (empty($_FILES['file']['name'])) {
+				echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_File_Required')]);
+				exit;
+			}
+
+			$original  = basename($_FILES['file']['name']);
+			$ext       = strtolower(pathinfo($original, PATHINFO_EXTENSION));
+			$allowed   = ['mp4', 'webm', 'ogg'];
+			$max_bytes = 50 * 1024 * 1024; // 50MB
+
+			if (!in_array($ext, $allowed, true)) {
+				echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_Invalid_File_Type')]);
+				exit;
+			}
+			if ($_FILES['file']['size'] > $max_bytes) {
+				echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_File_Too_Large')]);
+				exit;
+			}
+
+			// Folder is optional (blank = uploads root) and may not exist yet - it's
+			// created on the fly, same as typing a new folder in a desktop file dialog.
+			$folder     = VideoBubble_sanitize_relpath($_POST['folder'] ?? '');
+			$target_dir = VideoBubble_UPLOAD_ROOT . ($folder !== '' ? $folder . '/' : '');
+
+			if (!is_dir($target_dir) && !mkdir($target_dir, 0755, true)) {
+				echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_Folder_Create_Failed')]);
+				exit;
+			}
+
+			// Confirm the resolved directory actually stays inside the uploads root
+			// (defence in depth - VideoBubble_sanitize_relpath() already strips '..').
+			$root_real = realpath(VideoBubble_UPLOAD_ROOT);
+			$dir_real  = realpath($target_dir);
+			if (!$root_real || !$dir_real || strpos($dir_real, $root_real) !== 0) {
+				echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_Invalid_Folder')]);
+				exit;
+			}
+
+			$safe = VideoBubble_safe_upload_filename($original, $target_dir);
+			if (!move_uploaded_file($_FILES['file']['tmp_name'], $target_dir . $safe)) {
+				echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_Upload_Failed')]);
+				exit;
+			}
+
+			$rel = ($folder !== '' ? $folder . '/' : '') . $safe;
+			echo json_encode(['ok' => true, 'filename' => $rel, 'url' => VideoBubble_resolve_source_url($rel)]);
+			exit;
+		}
+
 		case 'get_settings': {
 			echo json_encode(['ok' => true, 'settings' => VideoBubble_get_settings()]);
 			exit;
@@ -449,53 +573,23 @@ function VideoBubble_handle_ajax($action) {
 				}
 				$source = $vid_id;
 			} else {
-				$mode = ($_POST['source_mode'] ?? 'upload') === 'existing' ? 'existing' : 'upload';
+				// 'video_source' is a path relative to data/uploads/, set by the file
+				// browser modal (either an existing file the user picked, or one they
+				// just uploaded through it).
+				$rel = trim(str_replace('\\', '/', $_POST['video_source'] ?? ''), '/');
+				$rel = $rel !== '' ? VideoBubble_sanitize_relpath($rel) : '';
 
-				if ($mode === 'existing') {
-					$existing_name = basename($_POST['existing_file'] ?? '');
-					$existing_path = VideoBubble_UPLOAD_DIR . $existing_name;
-					if (!$existing_name || !file_exists($existing_path)) {
-						echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_File_Required')]);
-						exit;
-					}
-					$source = $existing_name;
-
-				} elseif (!empty($_FILES['file']['name'])) {
-					$original  = basename($_FILES['file']['name']);
-					$ext       = strtolower(pathinfo($original, PATHINFO_EXTENSION));
-					$allowed   = ['mp4', 'webm', 'ogg'];
-					$max_bytes = 50 * 1024 * 1024; // 50MB
-
-					if (!in_array($ext, $allowed, true)) {
-						echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_Invalid_File_Type')]);
-						exit;
-					}
-					if ($_FILES['file']['size'] > $max_bytes) {
-						echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_File_Too_Large')]);
-						exit;
-					}
-
-					// Keep the original filename - only suffixed if it collides with an existing file
-					$safe = VideoBubble_safe_upload_filename($original);
-					if (!move_uploaded_file($_FILES['file']['tmp_name'], VideoBubble_UPLOAD_DIR . $safe)) {
-						echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_Upload_Failed')]);
-						exit;
-					}
-					$source = $safe;
-
-				} elseif ($id) {
-					// Editing, no new file/selection posted - keep whatever this row already had
+				if ($rel === '' && $id) {
+					// Editing, no new selection posted - keep whatever this row already had
 					$existing = VideoBubble_get_video($id);
-					$source   = $existing['source'] ?? '';
-				} else {
-					echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_File_Required')]);
-					exit;
+					$rel      = $existing['source'] ?? '';
 				}
 
-				if (!$source) {
+				if ($rel === '' || !file_exists(VideoBubble_resolve_source_path($rel))) {
 					echo json_encode(['ok' => false, 'msg' => i18n_r('VideoBubble/lang_File_Required')]);
 					exit;
 				}
+				$source = $rel;
 
 				// If editing and the file changed, clean up the OLD file - but only if no
 				// other video row still references it (files can now be shared/reused).
@@ -503,8 +597,8 @@ function VideoBubble_handle_ajax($action) {
 					$existing_row = VideoBubble_get_video($id);
 					if ($existing_row && $existing_row['type'] === 'mp4' && $existing_row['source'] && $existing_row['source'] !== $source) {
 						if (!VideoBubble_file_in_use($existing_row['source'], $id)) {
-							$old_path = VideoBubble_UPLOAD_DIR . basename($existing_row['source']);
-							if (file_exists($old_path)) @unlink($old_path);
+							$old_path = VideoBubble_resolve_source_path($existing_row['source']);
+							if ($old_path && file_exists($old_path)) @unlink($old_path);
 						}
 					}
 				}
@@ -540,8 +634,8 @@ function VideoBubble_handle_ajax($action) {
 			if (!$row) { echo json_encode(['ok' => false, 'msg' => 'Not found']); exit; }
 
 			if ($row['type'] === 'mp4' && $row['source'] && !VideoBubble_file_in_use($row['source'], $id)) {
-				$path = VideoBubble_UPLOAD_DIR . basename($row['source']);
-				if (file_exists($path)) @unlink($path);
+				$path = VideoBubble_resolve_source_path($row['source']);
+				if ($path && file_exists($path)) @unlink($path);
 			}
 
 			$db   = VideoBubble_db();

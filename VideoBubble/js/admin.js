@@ -14,9 +14,9 @@
 	var cancelBtn  = document.getElementById('vb-cancel-edit');
 	var submitBtn  = document.getElementById('vb-submit-video');
 	var settingsForm = document.getElementById('vb-settings-form');
-	var existingFilesEl = document.getElementById('vb-existing-files');
-	var existingEmptyEl = document.getElementById('vb-existing-empty');
-	var existingFileHidden = videoForm.querySelector('input[name="existing_file"]');
+	var videoSourceHidden = document.getElementById('vb-video-source');
+	var pickedFileEl = document.getElementById('vb-picked-file');
+	var pickVideoBtn = document.getElementById('vb-pick-video-btn');
 
 	var videos = [];
 	try {
@@ -26,7 +26,8 @@
 	// Explicit source of truth for "are we editing, and what id" - NOT the hidden
 	// DOM field, which can be stale after form.reset()/browser autofill/async re-render.
 	var currentEditId = null; // null = adding a new video
-	var uploadedFilesCache = null; // lazy-loaded list of existing files, refreshed on demand
+	var fbFiles = null;  // lazy-loaded, recursive list of every video file under data/uploads/
+	var fbFolder = '';   // folder currently open in the Browse tab (relative to data/uploads/)
 
 	// ── Toast ──────────────────────────────────────────────────────────────
 	var toastTimer = null;
@@ -86,52 +87,172 @@
 		});
 	});
 
-	// ── mp4 source mode toggle (upload vs existing) ─────────────────────────
-	videoForm.querySelectorAll('input[name="source_mode"]').forEach(function (radio) {
-		radio.addEventListener('change', function () {
-			var mode = videoForm.querySelector('input[name="source_mode"]:checked').value;
-			videoForm.querySelectorAll('[data-source-mode]').forEach(function (field) {
-				field.hidden = (field.dataset.sourceMode !== mode);
-			});
-			if (mode === 'existing') loadExistingFiles();
-		});
-	});
-
-	function loadExistingFiles(forceRefresh) {
-		if (uploadedFilesCache && !forceRefresh) {
-			renderExistingFiles(uploadedFilesCache);
-			return;
+	// ── Video file picker button + selection label ───────────────────────────
+	function setPickedFile(relPath) {
+		videoSourceHidden.value = relPath || '';
+		if (relPath) {
+			pickedFileEl.textContent = relPath;
+			pickVideoBtn.textContent = 'Change video';
+		} else {
+			pickedFileEl.textContent = 'No file selected yet.';
+			pickVideoBtn.textContent = 'Choose video…';
 		}
-		existingFilesEl.innerHTML = '<p class="vb-hint">Loading…</p>';
+	}
+
+	// ── File browser modal (Browse whole data/uploads/ tree, or Upload New) ──
+	var fbBg       = document.getElementById('vb-fb-bg');
+	var fbCrumb    = document.getElementById('vb-fb-crumb');
+	var fbGrid     = document.getElementById('vb-fb-grid');
+	var fbSearch   = document.getElementById('vb-fb-search');
+	var fbBrowseEl = document.getElementById('vb-fb-browse');
+	var fbUploadEl = document.getElementById('vb-fb-upload');
+	var fbFolderInput = document.getElementById('vb-fb-folder');
+	var fbFileInput   = document.getElementById('vb-fb-file-input');
+	var fbDropzone    = document.getElementById('vb-fb-dropzone');
+	var fbProgress    = document.getElementById('vb-fb-upload-progress');
+
+	window.vbFbOpen = function () {
+		fbFolder = '';
+		fbBg.hidden = false;
+		document.querySelectorAll('.vb-fb-tab').forEach(function (b, i) { b.classList.toggle('vb-active', i === 0); });
+		fbBrowseEl.hidden = false;
+		fbUploadEl.hidden = true;
+		if (fbSearch) fbSearch.value = '';
+		fbLoadFiles();
+	};
+
+	window.vbFbClose = function () {
+		fbBg.hidden = true;
+	};
+
+	window.vbFbTab = function (tab, btn) {
+		document.querySelectorAll('.vb-fb-tab').forEach(function (b) { b.classList.remove('vb-active'); });
+		btn.classList.add('vb-active');
+		fbBrowseEl.hidden = (tab !== 'browse');
+		fbUploadEl.hidden = (tab !== 'upload');
+		if (tab === 'upload') fbFolderInput.value = fbFolder; // default to wherever the user was browsing
+	};
+
+	function fbLoadFiles(force) {
+		if (fbFiles && !force) { fbRenderGrid(); return; }
+		fbGrid.innerHTML = '<div class="vb-hint">Loading…</div>';
 		getJSON('list_uploads').then(function (res) {
-			if (!res.ok) { toast('Could not load existing files.', true); return; }
-			uploadedFilesCache = res.files;
-			renderExistingFiles(res.files);
+			if (!res.ok) { fbGrid.innerHTML = '<p class="vb-fb-empty">Could not load files.</p>'; return; }
+			fbFiles = res.files;
+			fbRenderGrid();
 		});
 	}
 
-	function renderExistingFiles(files) {
-		existingFilesEl.innerHTML = '';
-		existingEmptyEl.hidden = files.length > 0;
-		var selected = existingFileHidden.value;
+	function fbRenderGrid() {
+		var filter = (fbSearch ? fbSearch.value : '').toLowerCase().trim();
 
-		files.forEach(function (f) {
-			var row = document.createElement('label');
-			row.className = 'vb-existing-file-row';
-			if (f.filename === selected) row.classList.add('vb-selected');
-
-			row.innerHTML =
-				'<input type="radio" name="existing_file_picker" value="' + escapeHtml(f.filename) + '"' + (f.filename === selected ? ' checked' : '') + '>' +
-				'<video src="' + escapeHtml(f.url) + '#t=0.5" preload="metadata" muted></video>' +
-				'<span class="vb-existing-file-info"><strong>' + escapeHtml(f.filename) + '</strong><small>' + formatBytes(f.size) + '</small></span>';
-
-			row.querySelector('input').addEventListener('change', function () {
-				existingFileHidden.value = f.filename;
-				existingFilesEl.querySelectorAll('.vb-existing-file-row').forEach(function (r) { r.classList.remove('vb-selected'); });
-				row.classList.add('vb-selected');
+		var files, folders;
+		if (filter) {
+			files = fbFiles.filter(function (f) { return f.filename.toLowerCase().indexOf(filter) !== -1; });
+			folders = [];
+		} else {
+			var seen = {};
+			folders = [];
+			files = [];
+			fbFiles.forEach(function (f) {
+				if (fbFolder && f.filename.indexOf(fbFolder + '/') !== 0) return;
+				var rel = fbFolder ? f.filename.slice(fbFolder.length + 1) : f.filename;
+				var parts = rel.split('/');
+				if (parts.length > 1) {
+					var sub = (fbFolder ? fbFolder + '/' : '') + parts[0];
+					if (!seen[sub]) { seen[sub] = true; folders.push(parts[0]); }
+				} else {
+					files.push(f);
+				}
 			});
+		}
 
-			existingFilesEl.appendChild(row);
+		// Breadcrumb
+		var crumbHtml = '<span class="vb-fb-crumb-item' + (fbFolder === '' ? ' vb-active' : '') + '" onclick="vbFbNav(\'\')">uploads</span>';
+		if (fbFolder) {
+			var built = '';
+			fbFolder.split('/').forEach(function (p, i, arr) {
+				built = built ? built + '/' + p : p;
+				var snap = built;
+				crumbHtml += ' / <span class="vb-fb-crumb-item' + (i === arr.length - 1 ? ' vb-active' : '') + '" onclick="vbFbNav(\'' + snap.replace(/'/g, "\\'") + '\')">' + escapeHtml(p) + '</span>';
+			});
+		}
+		fbCrumb.innerHTML = crumbHtml;
+
+		if (!folders.length && !files.length) {
+			fbGrid.innerHTML = '<p class="vb-fb-empty">No video files found.</p>';
+			return;
+		}
+
+		var html = '';
+		folders.sort().forEach(function (f) {
+			var fullPath = (fbFolder ? fbFolder + '/' : '') + f;
+			var count = fbFiles.filter(function (file) { return file.filename.indexOf(fullPath + '/') === 0; }).length;
+			html += '<div class="vb-fb-folder" onclick="vbFbNav(\'' + fullPath.replace(/'/g, "\\'") + '\')">' +
+				'<svg width="32" height="32" viewBox="0 0 24 24" fill="#f59e0b"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>' +
+				'<span class="vb-fb-name">' + escapeHtml(f) + '</span>' +
+				'<span class="vb-fb-folder-count">' + count + '</span>' +
+				'</div>';
+		});
+		files.forEach(function (f) {
+			html += '<div class="vb-fb-file" onclick="vbFbSelect(\'' + f.filename.replace(/'/g, "\\'") + '\')" title="' + escapeHtml(f.filename) + '">' +
+				'<video src="' + escapeHtml(f.url) + '#t=0.5" preload="metadata" muted></video>' +
+				'<span class="vb-fb-name">' + escapeHtml(f.basename) + '</span>' +
+				'<span class="vb-fb-size">' + formatBytes(f.size) + '</span>' +
+				'</div>';
+		});
+		fbGrid.innerHTML = html;
+	}
+
+	window.vbFbNav = function (folder) {
+		fbFolder = folder;
+		if (fbSearch) fbSearch.value = '';
+		fbRenderGrid();
+	};
+
+	window.vbFbFilter = function () {
+		fbRenderGrid();
+	};
+
+	window.vbFbSelect = function (relPath) {
+		setPickedFile(relPath);
+		vbFbClose();
+	};
+
+	fbFileInput.addEventListener('change', function () {
+		if (this.files && this.files.length) fbUpload(this.files[0]);
+	});
+
+	['dragover', 'dragenter'].forEach(function (evt) {
+		fbDropzone.addEventListener(evt, function (e) { e.preventDefault(); fbDropzone.classList.add('vb-dragover'); });
+	});
+	['dragleave', 'drop'].forEach(function (evt) {
+		fbDropzone.addEventListener(evt, function (e) { e.preventDefault(); fbDropzone.classList.remove('vb-dragover'); });
+	});
+	fbDropzone.addEventListener('drop', function (e) {
+		var f = e.dataTransfer.files && e.dataTransfer.files[0];
+		if (f) fbUpload(f);
+	});
+
+	function fbUpload(file) {
+		var fd = new FormData();
+		fd.append('file', file);
+		fd.append('folder', fbFolderInput.value.trim());
+
+		fbProgress.hidden = false;
+		fbProgress.textContent = 'Uploading…';
+
+		postForm('upload_file', fd).then(function (res) {
+			fbProgress.hidden = true;
+			fbFileInput.value = '';
+			if (!res.ok) { toast(res.msg || 'Upload failed.', true); return; }
+			fbFiles = null; // list has changed - refetch next time browse is opened
+			setPickedFile(res.filename);
+			toast('Video uploaded.');
+			vbFbClose();
+		}).catch(function () {
+			fbProgress.hidden = true;
+			toast('Network error uploading video.', true);
 		});
 	}
 
@@ -191,7 +312,7 @@
 			if (idx >= 0) videos[idx] = res.row; else videos.push(res.row);
 			renderVideos();
 			resetVideoForm();
-			uploadedFilesCache = null; // list may have changed (new upload, or old file cleaned up)
+			fbFiles = null; // list may have changed (old file cleaned up on edit)
 			toast('Video saved.');
 		}).catch(function () {
 			submitBtn.disabled = false;
@@ -204,15 +325,10 @@
 		videoForm.reset();
 		videoForm.querySelector('input[name="id"]').value = 0;
 		videoForm.querySelector('input[name="type"][value="mp4"]').checked = true;
-		videoForm.querySelector('input[name="source_mode"][value="upload"]').checked = true;
-		existingFileHidden.value = '';
+		setPickedFile('');
 		videoForm.querySelectorAll('[data-type-field]').forEach(function (field) {
 			field.hidden = (field.dataset.typeField !== 'mp4');
 		});
-		videoForm.querySelectorAll('[data-source-mode]').forEach(function (field) {
-			field.hidden = (field.dataset.sourceMode !== 'upload');
-		});
-		videoForm.querySelector('[data-existing-file]').textContent = '';
 		cancelBtn.hidden = true;
 		submitBtn.textContent = 'Save video';
 		formHeading.textContent = 'Add a Video';
@@ -240,14 +356,9 @@
 			if (v.type === 'youtube') {
 				videoForm.querySelector('input[name="youtube_url"]').value = v.source;
 			} else {
-				// mp4: default to "existing" mode, pre-selecting the current file,
-				// so re-saving without touching anything doesn't re-upload/rename it.
-				videoForm.querySelector('input[name="source_mode"][value="existing"]').checked = true;
-				videoForm.querySelectorAll('[data-source-mode]').forEach(function (field) {
-					field.hidden = (field.dataset.sourceMode !== 'existing');
-				});
-				existingFileHidden.value = v.source;
-				loadExistingFiles(true);
+				// mp4: pre-fill the picker with the current file, so re-saving without
+				// touching it just keeps referencing the same file (no re-upload).
+				setPickedFile(v.source);
 			}
 
 			cancelBtn.hidden = false;
@@ -264,7 +375,7 @@
 				if (!res.ok) { toast(res.msg || 'Error deleting video', true); return; }
 				videos = videos.filter(function (v) { return String(v.id) !== delBtn.dataset.delete; });
 				renderVideos();
-				uploadedFilesCache = null;
+				fbFiles = null;
 				toast('Video deleted.');
 				if (currentEditId != null && String(currentEditId) === delBtn.dataset.delete) resetVideoForm();
 			});

@@ -15,6 +15,46 @@ $vb_plugin_url = VideoBubble_plugin_url();
 
 	<div id="vb-toast" class="vb-toast" hidden></div>
 
+	<div class="vb-modal-bg" id="vb-fb-bg" hidden>
+		<div class="vb-modal vb-modal-lg">
+			<div class="vb-modal-head">
+				<span><?= i18n_r('VideoBubble/lang_Select_Video') ?></span>
+				<button type="button" class="vb-icon-btn" onclick="vbFbClose()">&#10005;</button>
+			</div>
+			<div class="vb-modal-body">
+				<div class="vb-fb-tabs">
+					<button type="button" class="vb-fb-tab vb-active" onclick="vbFbTab('browse', this)"><?= i18n_r('VideoBubble/lang_Browse_Uploads') ?></button>
+					<button type="button" class="vb-fb-tab" onclick="vbFbTab('upload', this)"><?= i18n_r('VideoBubble/lang_Upload_New') ?></button>
+				</div>
+
+				<div id="vb-fb-browse">
+					<div class="vb-fb-crumb" id="vb-fb-crumb"></div>
+					<div class="vb-fb-search-row">
+						<input type="text" id="vb-fb-search" placeholder="<?= i18n_r('VideoBubble/lang_Filter_Videos') ?>" oninput="vbFbFilter()">
+					</div>
+					<div class="vb-fb-grid" id="vb-fb-grid">
+						<div class="vb-hint"><?= i18n_r('VideoBubble/lang_Loading_Videos') ?></div>
+					</div>
+				</div>
+
+				<div id="vb-fb-upload" hidden>
+					<div class="vb-field">
+						<label for="vb-fb-folder"><?= i18n_r('VideoBubble/lang_Upload_Folder') ?></label>
+						<input type="text" id="vb-fb-folder" placeholder="<?= i18n_r('VideoBubble/lang_Upload_Folder_Placeholder') ?>">
+						<p class="vb-hint"><?= i18n_r('VideoBubble/lang_Upload_Folder_Hint') ?></p>
+					</div>
+					<div class="vb-fb-upload-area" id="vb-fb-dropzone">
+						<p><?= i18n_r('VideoBubble/lang_Drop_Here') ?></p>
+						<label class="button vb-fb-upload-btn-label" for="vb-fb-file-input"><?= i18n_r('VideoBubble/lang_Choose_File') ?></label>
+						<input type="file" id="vb-fb-file-input" accept=".mp4,.webm,.ogg" hidden>
+						<p class="vb-hint"><?= i18n_r('VideoBubble/lang_Upload_Hint') ?></p>
+					</div>
+					<p id="vb-fb-upload-progress" class="vb-hint" hidden></p>
+				</div>
+			</div>
+		</div>
+	</div>
+
 	<div class="vb-tabs">
 		<button type="button" class="vb-tab-btn vb-active" data-tab="videos"><?= i18n_r('VideoBubble/lang_Tab_Videos') ?></button>
 		<button type="button" class="vb-tab-btn" data-tab="settings"><?= i18n_r('VideoBubble/lang_Tab_Settings') ?></button>
@@ -38,22 +78,11 @@ $vb_plugin_url = VideoBubble_plugin_url();
 
 				<div class="vb-field" data-type-field="mp4">
 					<label><?= i18n_r('VideoBubble/lang_Video_File') ?></label>
-					<div class="vb-radio-row">
-						<label><input type="radio" name="source_mode" value="upload" checked> <?= i18n_r('VideoBubble/lang_Upload_New') ?></label>
-						<label><input type="radio" name="source_mode" value="existing"> <?= i18n_r('VideoBubble/lang_Choose_Existing') ?></label>
+					<div class="vb-picker-row">
+						<button type="button" id="vb-pick-video-btn" class="button" onclick="vbFbOpen()"><?= i18n_r('VideoBubble/lang_Choose_Video') ?></button>
+						<span id="vb-picked-file" class="vb-hint"><?= i18n_r('VideoBubble/lang_No_File_Selected') ?></span>
 					</div>
-
-					<div data-source-mode="upload">
-						<input type="file" name="file" accept=".mp4,.webm,.ogg">
-						<p class="vb-hint"><?= i18n_r('VideoBubble/lang_Upload_Filename_Hint') ?></p>
-						<p class="vb-hint" data-existing-file></p>
-					</div>
-
-					<div data-source-mode="existing" hidden>
-						<div id="vb-existing-files" class="vb-existing-files"></div>
-						<p id="vb-existing-empty" class="vb-hint" hidden><?= i18n_r('VideoBubble/lang_No_Existing_Files') ?></p>
-						<input type="hidden" name="existing_file" value="">
-					</div>
+					<input type="hidden" name="video_source" id="vb-video-source" value="">
 				</div>
 
 				<div class="vb-field" data-type-field="youtube" hidden>
