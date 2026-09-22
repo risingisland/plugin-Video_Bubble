@@ -2,7 +2,7 @@
 
 $vb_settings = VideoBubble_get_settings();
 $vb_videos   = VideoBubble_get_videos();
-$vb_nonce    = get_nonce('vb_ajax', VideoBubble_SLUG);
+$vb_nonce    = VideoBubble_get_csrf_token();
 $vb_plugin_url = VideoBubble_plugin_url();
 ?>
 <div id="vb-admin-app" class="vb-admin-app"
